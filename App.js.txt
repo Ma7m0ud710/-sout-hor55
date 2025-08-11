@@ -1,0 +1,590 @@
+// App.js - Paste this entire file into https://snack.expo.dev (App.js)
+// Add dependency in Snack: @react-native-async-storage/async-storage
+
+import React, { useEffect, useState } from "react";
+import {
+  SafeAreaView,
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  FlatList,
+  Alert,
+  StyleSheet,
+  ScrollView,
+  Image,
+} from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+
+/*
+  Sout Hor - ’Ê  Õ—
+  - Owner default password: 123Ma7m0ud123#
+  - Owner shown as: Mahmoud Elhasaany
+  - Single-file prototype suitable for Expo Snack
+*/
+
+const OWNER_NAME = "Mahmoud Elhasaany";
+const DEFAULT_OWNER_PW = "123Ma7m0ud123#";
+// Hatshepsut temple image (works on Snack)
+const HATSHEPSUT_IMAGE =
+  "https://upload.wikimedia.org/wikipedia/commons/thumb/4/4b/Temple_of_Hatshepsut_02.jpg/1280px-Temple_of_Hatshepsut_02.jpg";
+
+export default function App() {
+  // navigation state
+  const [screen, setScreen] = useState("Login"); // many screens by name
+  const [role, setRole] = useState(null); // 'owner' or 'user'
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+
+  // data (persisted)
+  const [ownerPw, setOwnerPw] = useState(DEFAULT_OWNER_PW);
+  const [mandoubeen, setMandoubeen] = useState([]); // delegates
+  const [drivers, setDrivers] = useState([]);
+  const [cars, setCars] = useState([]);
+  const [voters, setVoters] = useState([]);
+  const [candidates, setCandidates] = useState([]); // {id,name,symbol}
+  const [votesRecords, setVotesRecords] = useState([]); // {id,committee,results:[{candidateId,votes}]}
+  const [alertsList, setAlertsList] = useState([]);
+
+  // load saved data
+  useEffect(() => {
+    (async () => {
+      try {
+        const pw = (await AsyncStorage.getItem("@owner_password")) || DEFAULT_OWNER_PW;
+        setOwnerPw(pw);
+
+        const m = JSON.parse((await AsyncStorage.getItem("@mandoubeen")) || "[]");
+        const d = JSON.parse((await AsyncStorage.getItem("@drivers")) || "[]");
+        const c = JSON.parse((await AsyncStorage.getItem("@cars")) || "[]");
+        const v = JSON.parse((await AsyncStorage.getItem("@voters")) || "[]");
+        const cand = JSON.parse((await AsyncStorage.getItem("@candidates")) || "[]");
+        const vr = JSON.parse((await AsyncStorage.getItem("@votes")) || "[]");
+        const al = JSON.parse((await AsyncStorage.getItem("@alerts")) || "[]");
+
+        setMandoubeen(m);
+        setDrivers(d);
+        setCars(c);
+        setVoters(v);
+        setCandidates(cand);
+        setVotesRecords(vr);
+        setAlertsList(al);
+      } catch (e) {
+        console.warn("Load error", e);
+      }
+    })();
+  }, []);
+
+  // generic save helper
+  const save = async (key, val, setter) => {
+    try {
+      await AsyncStorage.setItem(key, JSON.stringify(val));
+      setter(val);
+    } catch (e) {
+      console.warn("Save error", e);
+    }
+  };
+
+  // AUTH
+  const onLogin = async () => {
+    if (!password) {
+      Alert.alert("Œÿ√", "„‰ ›÷·ﬂ √œŒ· ﬂ·„… «·„—Ê—");
+      return;
+    }
+    const stored = (await AsyncStorage.getItem("@owner_password")) || DEFAULT_OWNER_PW;
+    if (password === stored) {
+      setRole("owner");
+      setScreen("Dashboard");
+      return;
+    }
+    // prototype: any non-empty => user (readonly)
+    setRole("user");
+    setScreen("Dashboard");
+  };
+
+  const logout = () => {
+    setRole(null);
+    setPassword("");
+    setUsername("");
+    setScreen("Login");
+  };
+
+  // add entries (owner only)
+  const addDelegate = async (item) => {
+    if (role !== "owner") return Alert.alert("„—›Ê÷", "›ﬁÿ «·„«·ﬂ Ì„ﬂ‰Â «·≈÷«›…");
+    const updated = [item, ...mandoubeen];
+    await save("@mandoubeen", updated, setMandoubeen);
+  };
+  const addDriver = async (item) => {
+    if (role !== "owner") return Alert.alert("„—›Ê÷", "›ﬁÿ «·„«·ﬂ Ì„ﬂ‰Â «·≈÷«›…");
+    const updated = [item, ...drivers];
+    await save("@drivers", updated, setDrivers);
+  };
+  const addCar = async (item) => {
+    if (role !== "owner") return Alert.alert("„—›Ê÷", "›ﬁÿ «·„«·ﬂ Ì„ﬂ‰Â «·≈÷«›…");
+    const updated = [item, ...cars];
+    await save("@cars", updated, setCars);
+  };
+  const addVoter = async (item) => {
+    if (role !== "owner") return Alert.alert("„—›Ê÷", "›ﬁÿ «·„«·ﬂ Ì„ﬂ‰Â «·≈÷«›…");
+    const updated = [item, ...voters];
+    await save("@voters", updated, setVoters);
+  };
+
+  // candidates
+  const addCandidate = async (name, symbol) => {
+    if (role !== "owner") return Alert.alert("„—›Ê÷", "√‰  ·”  «·„«·ﬂ");
+    if (!name) return Alert.alert("Œÿ√", "√œŒ· «”„ «·„—‘Õ");
+    const id = Date.now().toString();
+    const newC = { id, name, symbol: symbol || "??" };
+    const updated = [newC, ...candidates];
+    await save("@candidates", updated, setCandidates);
+  };
+
+  // votes
+  const recordVote = async (committee, candidateId, count = 1) => {
+    if (role !== "owner") return Alert.alert("„—›Ê÷", "√‰  ·Ì” ·œÌﬂ ’·«ÕÌ…  ”ÃÌ· «·√’Ê« ");
+    // ensure record exists
+    let rec = votesRecords.find((r) => r.committee === committee);
+    if (!rec) {
+      rec = { id: Date.now().toString(), committee, results: candidates.map((c) => ({ candidateId: c.id, votes: 0 })) };
+      const updated = [rec, ...votesRecords];
+      await save("@votes", updated, setVotesRecords);
+      rec = updated.find((r) => r.committee === committee);
+    }
+    // update rec
+    rec.results = rec.results.map((res) =>
+      res.candidateId === candidateId ? { ...res, votes: res.votes + count } : res
+    );
+    const updatedAll = votesRecords.map((r) => (r.committee === committee ? rec : r));
+    await save("@votes", updatedAll, setVotesRecords);
+    Alert.alert(" „", " „  ”ÃÌ· «·√’Ê« ");
+  };
+
+  const resetVotesForCommittee = async (committee) => {
+    if (role !== "owner") return Alert.alert("„—›Ê÷", "√‰  ·Ì” ·œÌﬂ ’·«ÕÌ…");
+    const updated = votesRecords.filter((r) => r.committee !== committee);
+    await save("@votes", updated, setVotesRecords);
+  };
+
+  // change owner password
+  const changeOwnerPassword = async (current, nw, confirm) => {
+    const stored = (await AsyncStorage.getItem("@owner_password")) || DEFAULT_OWNER_PW;
+    if (current !== stored) {
+      Alert.alert("Œÿ√", "ﬂ·„… «·”— «·Õ«·Ì… €Ì— ’ÕÌÕ…");
+      return false;
+    }
+    if (nw.length < 6) {
+      Alert.alert("Œÿ√", "ﬂ·„… «·”— «·ÃœÌœ… ﬁ’Ì—… (6 √Õ—› ⁄·Ï «·√ﬁ·)");
+      return false;
+    }
+    if (nw !== confirm) {
+      Alert.alert("Œÿ√", "«· √ﬂÌœ €Ì— „ÿ«»ﬁ");
+      return false;
+    }
+    await AsyncStorage.setItem("@owner_password", nw);
+    setOwnerPw(nw);
+    Alert.alert(" „", " „  €ÌÌ— ﬂ·„… «·”—");
+    setScreen("Settings");
+    return true;
+  };
+
+  // simple statistics
+  const stats = {
+    delegates: mandoubeen.length,
+    drivers: drivers.length,
+    cars: cars.length,
+    voters: voters.length,
+    candidates: candidates.length,
+  };
+
+  // ---------------- UI screens ----------------
+  if (screen === "Login") {
+    return (
+      <SafeAreaView style={styles.container}>
+        <ScrollView contentContainerStyle={{ padding: 20, alignItems: "center" }}>
+          <Image source={{ uri: HATSHEPSUT_IMAGE }} style={styles.hero} />
+          <Text style={styles.appTitle}>’Ê  Õ—</Text>
+          <Text style={styles.subTitle}>Qurna - «·ﬁ—‰…</Text>
+          <Text style={{ marginTop: 8, color: "#444" }}>≈‘—«› {OWNER_NAME}</Text>
+
+          <View style={{ height: 16 }} />
+          <TextInput placeholder="—ﬁ„ «·Â« › √Ê «”„ «·„” Œœ„" style={styles.input} value={username} onChangeText={setUsername} />
+          <TextInput placeholder="ﬂ·„… «·„—Ê—" secureTextEntry style={styles.input} value={password} onChangeText={setPassword} />
+          <TouchableOpacity style={styles.btnPrimary} onPress={onLogin}>
+            <Text style={styles.btnText}> ”ÃÌ· «·œŒÊ·</Text>
+          </TouchableOpacity>
+
+          <Text style={{ marginTop: 12, color: "#666", textAlign: "center" }}>
+            ﬂ·„… «·”— «·«› —«÷Ì… ··„«·ﬂ: {DEFAULT_OWNER_PW}
+          </Text>
+          <View style={{ height: 8 }} />
+          <TouchableOpacity onPress={() => { setPassword(DEFAULT_OWNER_PW); Alert.alert(" „", "ﬂ·„… «·”— «·«› —«÷Ì… „·∆   ·ﬁ«∆Ì«"); }}>
+            <Text style={{ color: "#555" }}>«÷€ÿ ·„·¡ ﬂ·„… «·”— «·«› —«÷Ì… («Œ »«—)</Text>
+          </TouchableOpacity>
+        </ScrollView>
+      </SafeAreaView>
+    );
+  }
+
+  // Dashboard
+  if (screen === "Dashboard") {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.headerRow}>
+          <Text style={styles.headerTitle}>’Ê  Õ—</Text>
+          <View style={{ flexDirection: "row", alignItems: "center" }}>
+            <TouchableOpacity onPress={() => setScreen("Notifications")} style={{ marginRight: 12 }}>
+              <Text style={styles.icon}>??</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => setScreen("Settings")}>
+              <Text style={styles.icon}>??</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        <ScrollView contentContainerStyle={{ padding: 16 }}>
+          <Text style={{ textAlign: "center", marginBottom: 10 }}>√Â·« {role === "owner" ? "’«Õ» «· ÿ»Ìﬁ" : username || "„” Œœ„"}</Text>
+          <View style={styles.grid}>
+            {[
+              { label: "«·≈Õ’«∆Ì« ", icon: "??", screen: "Stats" },
+              { label: "«·„‰«œÌ»", icon: "??û??", screen: "Mandoubeen" },
+              { label: "«·”«∆ﬁÌ‰", icon: "??", screen: "Drivers" },
+              { label: "«·⁄—»Ì« ", icon: "??", screen: "Cars" },
+              { label: "«·‰«Œ»Ì‰", icon: "??û??û??", screen: "Voters" },
+              { label: "«·√’Ê« ", icon: "???", screen: "Votes" },
+              { label: "«·„—‘ÕÌ‰", icon: "???", screen: "Candidates" },
+              { label: "≈÷«›… ÃœÌœ…", icon: "?", screen: "AddNew" },
+            ].map((it) => (
+              <TouchableOpacity key={it.screen} style={styles.card} onPress={() => setScreen(it.screen)}>
+                <Text style={styles.cardIcon}>{it.icon}</Text>
+                <Text style={styles.cardLabel}>{it.label}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          <View style={{ height: 12 }} />
+          <View style={{ marginTop: 8 }}>
+            <Text style={{ fontWeight: "700", marginBottom: 6 }}>«·≈‘—«›</Text>
+            <Text>≈”„ «·„«·ﬂ: {OWNER_NAME}</Text>
+            <Text>ﬂ·„… «·”—: „Œ›Ì… - Ì„ﬂ‰ﬂ  €ÌÌ—Â« „‰ «·≈⁄œ«œ« </Text>
+          </View>
+
+          <View style={{ height: 18 }} />
+          <TouchableOpacity style={styles.btnDanger} onPress={logout}>
+            <Text style={styles.btnText}> ”ÃÌ· Œ—ÊÃ</Text>
+          </TouchableOpacity>
+        </ScrollView>
+      </SafeAreaView>
+    );
+  }
+
+  // Stats
+  if (screen === "Stats") {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.headerRow}>
+          <TouchableOpacity onPress={() => setScreen("Dashboard")}><Text style={styles.link}>??</Text></TouchableOpacity>
+          <Text style={styles.headerTitle}>«·≈Õ’«∆Ì« </Text>
+          <View style={{ width: 28 }} />
+        </View>
+        <View style={{ padding: 16 }}>
+          <Text>⁄œœ «·„‰«œÌ»: {stats.delegates}</Text>
+          <Text>⁄œœ «·”«∆ﬁÌ‰: {stats.drivers}</Text>
+          <Text>⁄œœ «·⁄—»Ì« : {stats.cars}</Text>
+          <Text>⁄œœ «·‰«Œ»Ì‰: {stats.voters}</Text>
+          <Text>⁄œœ «·„—‘ÕÌ‰: {stats.candidates}</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  // Generic list template
+  const ListTemplate = ({ title, data, onAdd, renderItem }) => (
+    <SafeAreaView style={styles.container}>
+      <View style={styles.headerRow}>
+        <TouchableOpacity onPress={() => setScreen("Dashboard")}><Text style={styles.link}>??</Text></TouchableOpacity>
+        <Text style={styles.headerTitle}>{title}</Text>
+        <View style={{ width: 28 }} />
+      </View>
+      <View style={{ padding: 16 }}>
+        {role === "owner" && onAdd && (
+          <TouchableOpacity style={styles.btnPrimary} onPress={onAdd}><Text style={styles.btnText}>≈÷«›…</Text></TouchableOpacity>
+        )}
+        <View style={{ height: 12 }} />
+        {data.length === 0 ? <Text>·«  ÊÃœ »Ì«‰«  »⁄œ</Text> : <FlatList data={data} keyExtractor={(i) => i.id} renderItem={renderItem} />}
+      </View>
+    </SafeAreaView>
+  );
+
+  if (screen === "Mandoubeen") {
+    return (
+      <ListTemplate
+        title="«·„‰«œÌ»"
+        data={mandoubeen}
+        onAdd={async () => await addDelegate({ id: Date.now().toString(), name: `„‰œÊ» ${mandoubeen.length + 1}`, phone: "0100" + (100000 + mandoubeen.length), committee: `·Ã‰… ${(mandoubeen.length % 3) + 1}` })}
+        renderItem={({ item }) => <View style={styles.row}><Text style={styles.rowTitle}>{item.name}</Text><Text>{item.phone}</Text><Text>{item.committee}</Text></View>}
+      />
+    );
+  }
+
+  if (screen === "Drivers") {
+    return (
+      <ListTemplate
+        title="«·”«∆ﬁÌ‰"
+        data={drivers}
+        onAdd={async () => await addDriver({ id: Date.now().toString(), name: `”«∆ﬁ ${drivers.length + 1}`, phone: "0111" + (100000 + drivers.length) })}
+        renderItem={({ item }) => <View style={styles.row}><Text style={styles.rowTitle}>{item.name}</Text><Text>{item.phone}</Text></View>}
+      />
+    );
+  }
+
+  if (screen === "Cars") {
+    return (
+      <ListTemplate
+        title="«·⁄—»Ì« "
+        data={cars}
+        onAdd={async () => await addCar({ id: Date.now().toString(), plate: `” ${1000 + cars.length}`, model: " ÊÌÊ «", capacity: 4 })}
+        renderItem={({ item }) => <View style={styles.row}><Text style={styles.rowTitle}>{item.plate}</Text><Text>{item.model}</Text></View>}
+      />
+    );
+  }
+
+  if (screen === "Voters") {
+    return (
+      <ListTemplate
+        title="«·‰«Œ»Ì‰"
+        data={voters}
+        onAdd={async () => await addVoter({ id: Date.now().toString(), name: `‰«Œ» ${voters.length + 1}`, phone: "0102" + (100000 + voters.length), committee: `·Ã‰… ${(voters.length % 3) + 1}` })}
+        renderItem={({ item }) => <View style={styles.row}><Text style={styles.rowTitle}>{item.name}</Text><Text>{item.committee}</Text></View>}
+      />
+    );
+  }
+
+  // Candidates
+  if (screen === "Candidates") {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.headerRow}>
+          <TouchableOpacity onPress={() => setScreen("Dashboard")}><Text style={styles.link}>??</Text></TouchableOpacity>
+          <Text style={styles.headerTitle}>«·„—‘ÕÌ‰</Text>
+          <View style={{ width: 28 }} />
+        </View>
+        <View style={{ padding: 16 }}>
+          {role === "owner" && <AddCandidateInline onAdd={addCandidate} />}
+          <View style={{ height: 12 }} />
+          {candidates.length === 0 ? <Text>·« ÌÊÃœ „—‘ÕÌ‰</Text> :
+            <FlatList data={candidates} keyExtractor={(i) => i.id} renderItem={({ item }) => <View style={styles.row}><Text style={styles.rowTitle}>{item.symbol} {item.name}</Text></View>} />
+          }
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  // Votes
+  if (screen === "Votes") {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.headerRow}>
+          <TouchableOpacity onPress={() => setScreen("Dashboard")}><Text style={styles.link}>??</Text></TouchableOpacity>
+          <Text style={styles.headerTitle}> ”ÃÌ· «·√’Ê« </Text>
+          <View style={{ width: 28 }} />
+        </View>
+        <View style={{ padding: 16 }}>
+          <Text style={{ marginBottom: 8 }}>«Œ — ·Ã‰…:</Text>
+          {["·Ã‰… 1", "·Ã‰… 2", "·Ã‰… 3"].map((comm) => (
+            <TouchableOpacity key={comm} style={styles.smallBtn} onPress={() => {
+              if (candidates.length === 0) return Alert.alert(" ‰»ÌÂ", "√÷› „—‘ÕÌ‰ √Ê·«");
+              setScreen("VoteRoom:" + comm);
+            }}>
+              <Text>{comm}</Text>
+            </TouchableOpacity>
+          ))}
+          <View style={{ height: 12 }} />
+          <Text style={{ fontWeight: "700", marginBottom: 8 }}>«·‰ «∆Ã «·„”Ã·…:</Text>
+          {votesRecords.length === 0 ? <Text>·«  ÊÃœ ‰ «∆Ã »⁄œ</Text> :
+            <FlatList data={votesRecords} keyExtractor={(i) => i.id} renderItem={({ item }) => (
+              <View style={styles.row}>
+                <Text style={styles.rowTitle}>{item.committee}</Text>
+                {item.results.map((r) => {
+                  const cand = candidates.find((c) => c.id === r.candidateId);
+                  return <Text key={r.candidateId}>{cand ? cand.name : "ó"} : {r.votes}</Text>;
+                })}
+              </View>
+            )} />
+          }
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  // VoteRoom
+  if (screen.startsWith("VoteRoom:")) {
+    const committee = screen.split(":")[1];
+    const rec = votesRecords.find((r) => r.committee === committee) || { results: candidates.map((c) => ({ candidateId: c.id, votes: 0 })) };
+
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.headerRow}>
+          <TouchableOpacity onPress={() => setScreen("Votes")}><Text style={styles.link}>??</Text></TouchableOpacity>
+          <Text style={styles.headerTitle}> ”ÃÌ· «·√’Ê«  - {committee}</Text>
+          <View style={{ width: 28 }} />
+        </View>
+        <View style={{ padding: 16 }}>
+          {candidates.map((c) => {
+            const current = (rec.results.find((r) => r.candidateId === c.id) || { votes: 0 }).votes;
+            return (
+              <View key={c.id} style={[styles.row, { flexDirection: "row", justifyContent: "space-between", alignItems: "center" }]}>
+                <View>
+                  <Text style={styles.rowTitle}>{c.symbol} {c.name}</Text>
+                  <Text>√’Ê«  Õ«·Ì…: {current}</Text>
+                </View>
+                <View style={{ flexDirection: "row" }}>
+                  <TouchableOpacity style={[styles.smallBtn, { marginRight: 8 }]} onPress={() => recordVote(committee, c.id, 1)}><Text>+1</Text></TouchableOpacity>
+                  <TouchableOpacity style={styles.smallBtn} onPress={() => recordVote(committee, c.id, 5)}><Text>+5</Text></TouchableOpacity>
+                </View>
+              </View>
+            );
+          })}
+          <View style={{ height: 12 }} />
+          <TouchableOpacity style={styles.btnDanger} onPress={() => Alert.alert(" √ﬂÌœ", `Â·  —Ìœ ≈⁄«œ…  ⁄ÌÌ‰ ‰ «∆Ã ${committee}ø`, [
+            { text: "·«" }, { text: "‰⁄„", onPress: async () => { await resetVotesForCommittee(committee); setScreen("Votes"); } }
+          ])}>
+            <Text style={styles.btnText}>≈⁄«œ…  ⁄ÌÌ‰ ‰ «∆Ã «··Ã‰…</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  // Notifications
+  if (screen === "Notifications") {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.headerRow}>
+          <TouchableOpacity onPress={() => setScreen("Dashboard")}><Text style={styles.link}>??</Text></TouchableOpacity>
+          <Text style={styles.headerTitle}>«· ‰»ÌÂ« </Text>
+          <View style={{ width: 28 }} />
+        </View>
+        <View style={{ padding: 16 }}>
+          {alertsList.length === 0 ? <Text>·«  ÊÃœ  ‰»ÌÂ« </Text> :
+            <FlatList data={alertsList} keyExtractor={(i) => i.id} renderItem={({ item }) => <View style={styles.row}><Text>{item.text}</Text></View>} />}
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  // AddNew
+  if (screen === "AddNew") {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.headerRow}>
+          <TouchableOpacity onPress={() => setScreen("Dashboard")}><Text style={styles.link}>??</Text></TouchableOpacity>
+          <Text style={styles.headerTitle}>≈÷«›… ÃœÌœ…</Text>
+          <View style={{ width: 28 }} />
+        </View>
+        <View style={{ padding: 16 }}>
+          <Text style={{ marginBottom: 8 }}>≈÷«›… ”—Ì⁄… („«·ﬂ ›ﬁÿ)</Text>
+          <TouchableOpacity style={styles.btnPrimary} onPress={async () => await addDelegate({ id: Date.now().toString(), name: `„‰œÊ» ${mandoubeen.length + 1}`, phone: "0100" + (100000 + mandoubeen.length), committee: `·Ã‰… ${(mandoubeen.length % 3) + 1}` })}><Text style={styles.btnText}>≈÷«›… „‰œÊ»</Text></TouchableOpacity>
+          <View style={{ height: 8 }} />
+          <TouchableOpacity style={styles.btnPrimary} onPress={async () => await addDriver({ id: Date.now().toString(), name: `”«∆ﬁ ${drivers.length + 1}`, phone: "0111" + (100000 + drivers.length) })}><Text style={styles.btnText}>≈÷«›… ”«∆ﬁ</Text></TouchableOpacity>
+          <View style={{ height: 8 }} />
+          <TouchableOpacity style={styles.btnPrimary} onPress={async () => await addCar({ id: Date.now().toString(), plate: `” ${1000 + cars.length}`, model: " ÊÌÊ «" })}><Text style={styles.btnText}>≈÷«›… ⁄—»Ì…</Text></TouchableOpacity>
+          <View style={{ height: 8 }} />
+          <TouchableOpacity style={styles.btnPrimary} onPress={async () => await addVoter({ id: Date.now().toString(), name: `‰«Œ» ${voters.length + 1}`, phone: "0102" + (100000 + voters.length), committee: `·Ã‰… ${(voters.length % 3) + 1}` })}><Text style={styles.btnText}>≈÷«›… ‰«Œ»</Text></TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  // Settings
+  if (screen === "Settings") {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.headerRow}>
+          <TouchableOpacity onPress={() => setScreen("Dashboard")}><Text style={styles.link}>??</Text></TouchableOpacity>
+          <Text style={styles.headerTitle}>«·≈⁄œ«œ« </Text>
+          <View style={{ width: 28 }} />
+        </View>
+        <View style={{ padding: 16 }}>
+          <Text style={{ marginBottom: 8 }}>’·«ÕÌ« : {role === "owner" ? "„«·ﬂ ( Õﬂ„ ﬂ«„·)" : "„” Œœ„ (ﬁ—«¡…)"}</Text>
+          <TouchableOpacity style={styles.btnPrimary} onPress={() => setScreen("ChangePW")}><Text style={styles.btnText}> €ÌÌ— ﬂ·„… «·”—</Text></TouchableOpacity>
+          <View style={{ height: 12 }} />
+          <TouchableOpacity style={styles.btnPrimary} onPress={() => Alert.alert("≈œ«—… «·„‘—›Ì‰", "” ÷«› ·«Õﬁ«") }><Text style={styles.btnText}>≈œ«—… «·„‘—›Ì‰</Text></TouchableOpacity>
+          <View style={{ height: 12 }} />
+          <TouchableOpacity style={styles.btnPrimary} onPress={async () => { await AsyncStorage.clear(); Alert.alert(" „", " „ „”Õ «·»Ì«‰«  «·„Õ·Ì… ( Ã—Ì»Ì)"); setScreen("Login"); }}><Text style={styles.btnText}>„”Õ «·»Ì«‰«  «·„Õ·Ì… ( Ã—Ì»Ì)</Text></TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (screen === "ChangePW") {
+    return <ChangePassword onDone={changeOwnerPassword} onBack={() => setScreen("Settings")} />;
+  }
+
+  // fallback
+  return (
+    <SafeAreaView style={styles.container}>
+      <Text>Õ«·… €Ì— „⁄—Ê›…</Text>
+      <TouchableOpacity onPress={() => setScreen("Login")}><Text style={{ color: "blue" }}>⁄Êœ…</Text></TouchableOpacity>
+    </SafeAreaView>
+  );
+}
+
+// Small components
+
+function AddCandidateInline({ onAdd }) {
+  const [name, setName] = useState("");
+  const [symbol, setSymbol] = useState("??");
+  return (
+    <View style={{ marginBottom: 12 }}>
+      <Text style={{ marginBottom: 8 }}>≈÷«›… „—‘Õ ÃœÌœ („«·ﬂ ›ﬁÿ)</Text>
+      <TextInput placeholder="«”„ «·„—‘Õ" value={name} onChangeText={setName} style={styles.input} />
+      <TextInput placeholder="—„“ «·„—‘Õ (√ÌﬁÊ‰…)" value={symbol} onChangeText={setSymbol} style={styles.input} />
+      <TouchableOpacity style={styles.btnPrimary} onPress={() => { onAdd(name.trim(), symbol.trim() || "??"); setName(""); setSymbol("??"); }}><Text style={styles.btnText}>≈÷«›… «·„—‘Õ</Text></TouchableOpacity>
+    </View>
+  );
+}
+
+function ChangePassword({ onDone, onBack }) {
+  const [current, setCurrent] = useState("");
+  const [nw, setNw] = useState("");
+  const [confirm, setConfirm] = useState("");
+  return (
+    <SafeAreaView style={{ flex: 1 }}>
+      <View style={styles.headerRow}>
+        <TouchableOpacity onPress={onBack}><Text style={styles.link}>??</Text></TouchableOpacity>
+        <Text style={styles.headerTitle}> €ÌÌ— ﬂ·„… «·”—</Text>
+        <View style={{ width: 28 }} />
+      </View>
+      <View style={{ padding: 16 }}>
+        <TextInput placeholder="ﬂ·„… «·”— «·Õ«·Ì…" secureTextEntry style={styles.input} value={current} onChangeText={setCurrent} />
+        <TextInput placeholder="ﬂ·„… «·”— «·ÃœÌœ…" secureTextEntry style={styles.input} value={nw} onChangeText={setNw} />
+        <TextInput placeholder=" √ﬂÌœ ﬂ·„… «·”—" secureTextEntry style={styles.input} value={confirm} onChangeText={setConfirm} />
+        <TouchableOpacity style={styles.btnPrimary} onPress={async () => { const ok = await onDone(current, nw, confirm); if (ok) { setCurrent(""); setNw(""); setConfirm(""); } }}><Text style={styles.btnText}> ÕœÌÀ</Text></TouchableOpacity>
+      </View>
+    </SafeAreaView>
+  );
+}
+
+// Styles
+const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: "#f6f7fb" },
+  hero: { width: "100%", height: 160, resizeMode: "cover" },
+  appTitle: { fontSize: 28, fontWeight: "800", textAlign: "center", marginTop: 8 },
+  subTitle: { textAlign: "center", color: "#666", marginBottom: 12 },
+  input: { borderWidth: 1, borderColor: "#ddd", backgroundColor: "#fff", padding: 12, marginBottom: 12, borderRadius: 8 },
+  btnPrimary: { backgroundColor: "#0b6cff", padding: 12, borderRadius: 8, alignItems: "center" },
+  btnDanger: { backgroundColor: "#ff4d4d", padding: 12, borderRadius: 8, alignItems: "center" },
+  btnText: { color: "#fff", fontWeight: "700" },
+  headerRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", padding: 12, backgroundColor: "#fff" },
+  headerTitle: { fontSize: 20, fontWeight: "800" },
+  link: { fontSize: 20 },
+  icon: { fontSize: 20 },
+  grid: { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between" },
+  card: { width: "48%", backgroundColor: "#fff", padding: 14, marginBottom: 12, borderRadius: 10, alignItems: "center" },
+  cardIcon: { fontSize: 32 },
+  cardLabel: { marginTop: 8, fontWeight: "700" },
+  row: { padding: 12, backgroundColor: "#fff", marginBottom: 8, borderRadius: 8 },
+  rowTitle: { fontWeight: "700", marginBottom: 4 },
+  smallBtn: { padding: 8, backgroundColor: "#e6e6e6", borderRadius: 6, marginBottom: 8 },
+});
